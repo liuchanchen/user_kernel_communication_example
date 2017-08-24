@@ -2,6 +2,7 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/slab.h>
+#include <linux/completion.h>
 #include <linux/sched.h>
 #include <linux/fs.h>
 #include <linux/string.h>
@@ -31,6 +32,8 @@ struct mychrdev_private {
 #define tailptr data->tailptr
 #define buffer data->buf
 };
+
+static DECLARE_COMPLETION(block_thread);
 
 ssize_t mychrdev_read(struct file * file, char __user * buf, size_t count, loff_t * ppos)
 {
@@ -94,6 +97,7 @@ int mychrdev_ioctl(struct file * file, unsigned int cmd, unsigned long argp)
         switch(cmd) 
 	{
                 case MYCHRDEV_IOCTL_GET_INFO:
+			wait_for_completion(&block_thread);
                         a.user_pid = myprivate->user_pid;
                         memcpy(a.user_name, myprivate->user_name, strlen(myprivate->user_name));
                         a.available_len = MYCHRDEV_CAPACITY - myprivate->tailptr;
@@ -106,6 +110,8 @@ int mychrdev_ioctl(struct file * file, unsigned int cmd, unsigned long argp)
                         }
                         break;
                 case MYCHRDEV_IOCTL_SET_TRUNCATE:
+			complete(&block_thread);
+#if 0
                         if (copy_from_user(&window, (void *)argp, sizeof(window))) 
 						{
                                 return -EFAULT;
@@ -123,6 +129,7 @@ int mychrdev_ioctl(struct file * file, unsigned int cmd, unsigned long argp)
 
                         myprivate->headptr = window.head;
                         myprivate->tailptr = window.tail;
+#endif
                         break;
                 default:
                         return -EINVAL;
@@ -144,7 +151,8 @@ int mychrdev_open(struct inode * inode, struct file * file)
         }
 #endif
         minor = MINOR(inode->i_rdev);
-	printk("open dev!\n");
+	printk("open dev:%d,minor:%d!\n", inode->i_rdev, minor);
+#if 0
         if (atomic_read(&mychrdev_use_stats[minor])) 
 		{
                 return -EBUSY;
@@ -153,7 +161,7 @@ int mychrdev_open(struct inode * inode, struct file * file)
 		{
                 atomic_inc(&mychrdev_use_stats[minor]);
         }
-
+#endif
         myprivate = (struct mychrdev_private *)kmalloc(sizeof(struct mychrdev_private), GFP_KERNEL);
         if (myprivate == NULL) {
                 return -ENOMEM;
